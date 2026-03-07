@@ -18,6 +18,7 @@ from app.core.openai.model_refresh_scheduler import build_model_refresh_schedule
 from app.core.usage.refresh_scheduler import build_usage_refresh_scheduler
 from app.db.session import close_db, init_db
 from app.modules.accounts import api as accounts_api
+from app.modules.anthropic import api as anthropic_api
 from app.modules.api_keys import api as api_keys_api
 from app.modules.dashboard import api as dashboard_api
 from app.modules.dashboard_auth import api as dashboard_auth_api
@@ -78,6 +79,8 @@ def create_app() -> FastAPI:
     app.include_router(proxy_api.v1_router)
     app.include_router(proxy_api.v1_ws_router)
     app.include_router(proxy_api.transcribe_router)
+    app.include_router(anthropic_api.router)
+    app.include_router(anthropic_api.diagnostics_router)
     app.include_router(proxy_api.usage_router)
     app.include_router(accounts_api.router)
     app.include_router(dashboard_api.router)
