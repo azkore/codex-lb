@@ -27,6 +27,8 @@ from app.modules.api_keys.service import (
     ApiKeyUsageReservationData,
 )
 
+# Keep both Anthropic routes mounted so clients can choose direct HTTP parity
+# or local SDK execution while sharing the same auth, logging, and dashboard plumbing.
 router = APIRouter(prefix="/claude/v1", tags=["anthropic"], dependencies=[Depends(set_anthropic_error_format)])
 api_router = APIRouter(prefix="/claude-sdk/v1", tags=["anthropic"], dependencies=[Depends(set_anthropic_error_format)])
 diagnostics_router = APIRouter(

@@ -499,6 +499,9 @@ async def _create_message_with_transport(
     payload: dict[str, JsonValue],
     headers: Mapping[str, str],
 ) -> dict[str, JsonValue]:
+    # The API transport preserves HTTP-level Anthropic compatibility, while the
+    # SDK transport keeps the same request/logging pipeline but delegates generation
+    # to the local Claude runtime.
     if transport == "api":
         return await core_create_message_api(payload, headers)
     return await core_create_message(payload, headers)

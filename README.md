@@ -273,6 +273,44 @@ print(response.choices[0].message.content)
 
 </details>
 
+## Anthropic Messages Mode (POC)
+
+`codex-lb` serves two Anthropic-compatible routes:
+
+- `POST /claude/v1/messages` - direct OAuth-backed HTTP proxy to Anthropic's Messages API
+- `POST /claude-sdk/v1/messages` - local Claude SDK runtime path
+
+The default Anthropic auth source is your local Claude Code login. Run `claude /login`, then start `codex-lb` and it will discover credentials locally for message proxying and 5h/7d usage refresh.
+
+```bash
+uv run fastapi run app/main.py --host 0.0.0.0 --port 2455
+```
+
+Manual Anthropic credential import is optional and disabled by default. Enable it only if you want the dashboard import flow for Anthropic accounts:
+
+```bash
+export CODEX_LB_ANTHROPIC_IMPORT_ENABLED=true
+```
+
+Useful settings:
+
+- `CODEX_LB_ANTHROPIC_USAGE_REFRESH_ENABLED=true` enables 5h/7d usage ingestion
+- `CODEX_LB_ANTHROPIC_OAUTH_USER_AGENT=claude-code/2.1.69` keeps token refresh and usage polling aligned with Claude Code's current OAuth user agent
+- `CODEX_LB_ANTHROPIC_USAGE_BEARER_TOKEN=...` can override discovered usage credentials explicitly
+
+Example request:
+
+```bash
+curl -sS http://127.0.0.1:2455/claude/v1/messages \
+  -H 'content-type: application/json' \
+  -H 'anthropic-version: 2023-06-01' \
+  -d '{
+    "model": "claude-sonnet-4-20250514",
+    "max_tokens": 1024,
+    "messages": [{"role":"user","content":"Hello"}]
+  }'
+```
+
 ## API Key Authentication
 
 API key auth is **disabled by default** — the proxy is open to any client. Enable it in **Settings → API Key Auth** on the dashboard.
