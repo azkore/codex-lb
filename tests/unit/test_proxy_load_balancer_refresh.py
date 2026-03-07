@@ -618,6 +618,89 @@ async def test_select_account_prunes_stale_runtime_for_removed_accounts() -> Non
 
 
 @pytest.mark.asyncio
+async def test_select_account_can_require_chatgpt_account(monkeypatch) -> None:
+    async def stub_refresh_accounts(
+        self,
+        accounts: list[Account],
+        latest_usage: dict[str, UsageHistory],
+    ) -> bool:
+        return False
+
+    monkeypatch.setattr(
+        "app.modules.usage.updater.UsageUpdater.refresh_accounts",
+        stub_refresh_accounts,
+    )
+
+    now = utcnow()
+    now_epoch = int(now.replace(tzinfo=timezone.utc).timestamp())
+    openai_account = _make_account("z-openai", "openai@example.com")
+    anthropic_account = _make_account("a-anthropic", "anthropic@example.com")
+    anthropic_account.chatgpt_account_id = None
+
+    primary_entries = {
+        openai_account.id: UsageHistory(
+            id=1,
+            account_id=openai_account.id,
+            recorded_at=now,
+            window="primary",
+            used_percent=10.0,
+            reset_at=now_epoch + 300,
+            window_minutes=5,
+        ),
+        anthropic_account.id: UsageHistory(
+            id=2,
+            account_id=anthropic_account.id,
+            recorded_at=now,
+            window="primary",
+            used_percent=0.0,
+            reset_at=now_epoch + 300,
+            window_minutes=5,
+        ),
+    }
+    secondary_entries = {
+        openai_account.id: UsageHistory(
+            id=3,
+            account_id=openai_account.id,
+            recorded_at=now,
+            window="secondary",
+            used_percent=10.0,
+            reset_at=now_epoch + 3600,
+            window_minutes=60,
+        ),
+        anthropic_account.id: UsageHistory(
+            id=4,
+            account_id=anthropic_account.id,
+            recorded_at=now,
+            window="secondary",
+            used_percent=0.0,
+            reset_at=now_epoch + 3600,
+            window_minutes=60,
+        ),
+    }
+
+    accounts_repo = StubAccountsRepository([openai_account, anthropic_account])
+    usage_repo = StubUsageRepository(primary=primary_entries, secondary=secondary_entries)
+    sticky_repo = StubStickySessionsRepository()
+
+    @asynccontextmanager
+    async def repo_factory() -> AsyncIterator[ProxyRepositories]:
+        yield ProxyRepositories(
+            accounts=accounts_repo,  # type: ignore[arg-type]
+            usage=usage_repo,  # type: ignore[arg-type]
+            request_logs=object(),  # type: ignore[arg-type]
+            sticky_sessions=sticky_repo,  # type: ignore[arg-type]
+            api_keys=object(),  # type: ignore[arg-type]
+            additional_usage=StubAdditionalUsageRepository(),  # type: ignore[arg-type]
+        )
+
+    balancer = LoadBalancer(repo_factory)
+    selection = await balancer.select_account(require_chatgpt_account=True)
+
+    assert selection.account is not None
+    assert selection.account.id == openai_account.id
+
+
+@pytest.mark.asyncio
 async def test_round_robin_serializes_concurrent_selection(monkeypatch) -> None:
     now = utcnow()
     now_epoch = int(now.replace(tzinfo=timezone.utc).timestamp())

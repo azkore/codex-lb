@@ -413,7 +413,7 @@ class ProxyService:
                 kind="transcribe",
                 prefer_earlier_reset_accounts=prefer_earlier_reset,
                 routing_strategy=routing_strategy,
-                model=None,
+                require_chatgpt_account=True,
             )
             account = selection.account
             if not account:
@@ -2712,6 +2712,7 @@ class ProxyService:
         routing_strategy: RoutingStrategy = "usage_weighted",
         model: str | None = None,
         additional_limit_name: str | None = None,
+        require_chatgpt_account: bool = False,
     ) -> AccountSelection:
         remaining_budget = _remaining_budget_seconds(deadline)
         if remaining_budget <= 0:
@@ -2730,6 +2731,7 @@ class ProxyService:
                     routing_strategy=routing_strategy,
                     model=model,
                     additional_limit_name=additional_limit_name,
+                    require_chatgpt_account=require_chatgpt_account,
                 )
         except TimeoutError:
             logger.warning("%s account selection exceeded request budget request_id=%s", kind.title(), request_id)

@@ -82,10 +82,12 @@ class LoadBalancer:
         model: str | None = None,
         additional_limit_name: str | None = None,
         exclude_account_ids: Collection[str] | None = None,
+        require_chatgpt_account: bool = False,
     ) -> AccountSelection:
         selection_inputs = await self._load_selection_inputs(
             model=model,
             additional_limit_name=additional_limit_name,
+            require_chatgpt_account=require_chatgpt_account,
         )
         excluded_ids = set(exclude_account_ids or ())
         if excluded_ids and selection_inputs.accounts:
@@ -173,11 +175,23 @@ class LoadBalancer:
         *,
         model: str | None,
         additional_limit_name: str | None = None,
+        require_chatgpt_account: bool = False,
     ) -> _SelectionInputs:
         async with self._repo_factory() as repos:
             all_accounts = await repos.accounts.list_accounts()
             effective_limit_name = additional_limit_name or _gated_limit_name_for_model(model)
-            accounts = all_accounts
+            accounts = (
+                [account for account in all_accounts if account.chatgpt_account_id]
+                if require_chatgpt_account
+                else all_accounts
+            )
+            if require_chatgpt_account and not accounts:
+                return _SelectionInputs(
+                    accounts=[],
+                    latest_primary={},
+                    latest_secondary={},
+                    error_message="No OpenAI-compatible accounts available",
+                )
             if model and (effective_limit_name is None or _mapped_model_has_registry_entry(model)):
                 accounts = _filter_accounts_for_model(accounts, model)
             if model and not accounts:
@@ -546,6 +560,9 @@ def _state_from_account(
 
 
 def _filter_accounts_for_model(accounts: list[Account], model: str) -> list[Account]:
+    accounts = [account for account in accounts if account.chatgpt_account_id]
+    if not accounts:
+        return []
     allowed_plans = get_model_registry().plan_types_for_model(model)
     if allowed_plans is None:
         return accounts
