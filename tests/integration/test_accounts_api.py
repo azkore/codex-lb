@@ -6,6 +6,7 @@ import json
 import pytest
 
 from app.core.auth import generate_unique_account_id
+from app.core.config.settings import get_settings
 
 pytestmark = pytest.mark.integration
 
@@ -45,6 +46,7 @@ async def test_import_and_list_accounts(async_client):
 
     list_response = await async_client.get("/api/accounts")
     assert list_response.status_code == 200
+    assert list_response.json()["anthropicImportEnabled"] is False
     accounts = list_response.json()["accounts"]
     assert any(account["accountId"] == expected_account_id for account in accounts)
 
@@ -55,6 +57,75 @@ async def test_reactivate_missing_account_returns_404(async_client):
     assert response.status_code == 404
     payload = response.json()
     assert payload["error"]["code"] == "account_not_found"
+
+
+@pytest.mark.asyncio
+async def test_import_anthropic_credentials_disabled_by_default(async_client):
+    disabled = await async_client.post(
+        "/api/accounts/import-anthropic",
+        files={
+            "credentials_json": ("claude-credentials.json", json.dumps({}), "application/json"),
+            "email": (None, "tester@example.com"),
+        },
+    )
+    assert disabled.status_code == 404
+    assert disabled.json()["error"]["code"] == "anthropic_import_disabled"
+
+
+@pytest.mark.asyncio
+async def test_import_anthropic_credentials_uses_email_display_name_when_enabled(async_client, monkeypatch):
+    monkeypatch.setenv("CODEX_LB_ANTHROPIC_IMPORT_ENABLED", "true")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+    credentials = {
+        "claudeAiOauth": {
+            "accessToken": "sk-ant-oat-123",
+            "refreshToken": "refresh-123",
+            "expiresAt": 1_893_456_789_000,
+        }
+    }
+
+    files = {
+        "credentials_json": ("claude-credentials.json", json.dumps(credentials), "application/json"),
+        "email": (None, "tester@example.com"),
+    }
+    response = await async_client.post("/api/accounts/import-anthropic", files=files)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["accountId"] == settings.anthropic_default_account_id
+    assert data["email"] == "tester@example.com"
+
+    list_response = await async_client.get("/api/accounts")
+    assert list_response.status_code == 200
+    accounts = list_response.json()["accounts"]
+    imported = next(
+        (account for account in accounts if account["accountId"] == settings.anthropic_default_account_id),
+        None,
+    )
+    assert imported is not None
+    assert imported["email"] == "tester@example.com"
+    assert imported["displayName"] == "tester@example.com"
+    assert list_response.json()["anthropicImportEnabled"] is True
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_import_anthropic_credentials_requires_email_when_enabled(async_client, monkeypatch):
+    monkeypatch.setenv("CODEX_LB_ANTHROPIC_IMPORT_ENABLED", "true")
+    get_settings.cache_clear()
+
+    credentials = {
+        "claudeAiOauth": {
+            "accessToken": "sk-ant-oat-123",
+            "refreshToken": "refresh-123",
+            "expiresAt": 1_893_456_789_000,
+        }
+    }
+    files = {"credentials_json": ("claude-credentials.json", json.dumps(credentials), "application/json")}
+    response = await async_client.post("/api/accounts/import-anthropic", files=files)
+    assert response.status_code == 422
+    get_settings.cache_clear()
 
 
 @pytest.mark.asyncio

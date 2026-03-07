@@ -23,6 +23,7 @@ export function AccountsPage() {
   const {
     accountsQuery,
     importMutation,
+    importAnthropicMutation,
     pauseMutation,
     resumeMutation,
     deleteMutation,
@@ -33,7 +34,9 @@ export function AccountsPage() {
   const oauthDialog = useDialogState();
   const deleteDialog = useDialogState<string>();
 
-  const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
+  const accountsData = accountsQuery.data;
+  const accounts = useMemo(() => accountsData?.accounts ?? [], [accountsData]);
+  const anthropicImportEnabled = accountsData?.anthropicImportEnabled ?? false;
   const duplicateAccountIds = useMemo(() => buildDuplicateAccountIdSet(accounts), [accounts]);
   const selectedAccountId = searchParams.get("selected");
 
@@ -63,12 +66,14 @@ export function AccountsPage() {
 
   const mutationBusy =
     importMutation.isPending ||
+    (anthropicImportEnabled && importAnthropicMutation.isPending) ||
     pauseMutation.isPending ||
     resumeMutation.isPending ||
     deleteMutation.isPending;
 
   const mutationError =
     getErrorMessageOrNull(importMutation.error) ||
+    (anthropicImportEnabled ? getErrorMessageOrNull(importAnthropicMutation.error) : null) ||
     getErrorMessageOrNull(pauseMutation.error) ||
     getErrorMessageOrNull(resumeMutation.error) ||
     getErrorMessageOrNull(deleteMutation.error);
@@ -113,10 +118,18 @@ export function AccountsPage() {
 
       <ImportDialog
         open={importDialog.open}
-        busy={importMutation.isPending}
-        error={getErrorMessageOrNull(importMutation.error)}
+        anthropicEnabled={anthropicImportEnabled}
+        busy={importMutation.isPending || (anthropicImportEnabled && importAnthropicMutation.isPending)}
+        error={
+          getErrorMessageOrNull(importMutation.error) ||
+          (anthropicImportEnabled ? getErrorMessageOrNull(importAnthropicMutation.error) : null)
+        }
         onOpenChange={importDialog.onOpenChange}
-        onImport={async (file) => {
+        onImport={async (provider, file, email) => {
+          if (provider === "anthropic" && anthropicImportEnabled) {
+            await importAnthropicMutation.mutateAsync({ file, email: email ?? "" });
+            return;
+          }
           await importMutation.mutateAsync(file);
         }}
       />
@@ -157,7 +170,7 @@ export function AccountsPage() {
         }}
       />
 
-      <LoadingOverlay visible={!!accountsQuery.data && mutationBusy} label="Updating accounts..." />
+      <LoadingOverlay visible={!!accountsData && mutationBusy} label="Updating accounts..." />
     </div>
   );
 }

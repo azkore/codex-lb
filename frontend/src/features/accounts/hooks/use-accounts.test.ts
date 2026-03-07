@@ -31,7 +31,7 @@ describe("useAccounts", () => {
     });
 
     await waitFor(() => expect(result.current.accountsQuery.isSuccess).toBe(true));
-    const firstAccountId = result.current.accountsQuery.data?.[0]?.accountId;
+    const firstAccountId = result.current.accountsQuery.data?.accounts[0]?.accountId;
     expect(firstAccountId).toBeTruthy();
 
     await result.current.pauseMutation.mutateAsync(firstAccountId as string);

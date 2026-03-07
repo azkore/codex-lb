@@ -73,7 +73,7 @@ describe("AccountList", () => {
     expect(screen.getByText("No matching accounts")).toBeInTheDocument();
   });
 
-  it("shows account id only for duplicate emails", () => {
+  it("shows provider label for duplicate emails", () => {
     render(
       <AccountList
         accounts={[

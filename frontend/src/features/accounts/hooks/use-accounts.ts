@@ -5,6 +5,7 @@ import {
   deleteAccount,
   getAccountTrends,
   importAccount,
+  importAnthropicAccount,
   listAccounts,
   pauseAccount,
   reactivateAccount,
@@ -31,6 +32,17 @@ export function useAccountMutations() {
     },
     onError: (error: Error) => {
       toast.error(error.message || "Import failed");
+    },
+  });
+
+  const importAnthropicMutation = useMutation({
+    mutationFn: importAnthropicAccount,
+    onSuccess: () => {
+      toast.success("Anthropic credentials imported");
+      invalidateAccountRelatedQueries(queryClient);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Anthropic import failed");
     },
   });
 
@@ -67,7 +79,7 @@ export function useAccountMutations() {
     },
   });
 
-  return { importMutation, pauseMutation, resumeMutation, deleteMutation };
+  return { importMutation, importAnthropicMutation, pauseMutation, resumeMutation, deleteMutation };
 }
 
 export function useAccountTrends(accountId: string | null) {
@@ -85,7 +97,6 @@ export function useAccounts() {
   const accountsQuery = useQuery({
     queryKey: ["accounts", "list"],
     queryFn: listAccounts,
-    select: (data) => data.accounts,
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });

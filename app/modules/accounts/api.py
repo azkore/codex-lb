@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.core.auth.dependencies import set_dashboard_error_format, validate_dashboard_session
+from app.core.config.settings import get_settings
 from app.core.exceptions import DashboardBadRequestError, DashboardConflictError, DashboardNotFoundError
 from app.dependencies import AccountsContext, get_accounts_context
 from app.modules.accounts.repository import AccountIdentityConflictError
@@ -14,7 +15,11 @@ from app.modules.accounts.schemas import (
     AccountsResponse,
     AccountTrendsResponse,
 )
-from app.modules.accounts.service import InvalidAuthJsonError
+from app.modules.accounts.service import (
+    InvalidAnthropicAuthJsonError,
+    InvalidAnthropicEmailError,
+    InvalidAuthJsonError,
+)
 
 router = APIRouter(
     prefix="/api/accounts",
@@ -28,7 +33,7 @@ async def list_accounts(
     context: AccountsContext = Depends(get_accounts_context),
 ) -> AccountsResponse:
     accounts = await context.service.list_accounts()
-    return AccountsResponse(accounts=accounts)
+    return AccountsResponse(accounts=accounts, anthropic_import_enabled=get_settings().anthropic_import_enabled)
 
 
 @router.get("/{account_id}/trends", response_model=AccountTrendsResponse)
@@ -54,6 +59,26 @@ async def import_account(
         raise DashboardBadRequestError("Invalid auth.json payload", code="invalid_auth_json") from exc
     except AccountIdentityConflictError as exc:
         raise DashboardConflictError(str(exc), code="duplicate_identity_conflict") from exc
+
+
+@router.post("/import-anthropic", response_model=AccountImportResponse)
+async def import_anthropic_account(
+    credentials_json: UploadFile = File(...),
+    email: str = Form(...),
+    context: AccountsContext = Depends(get_accounts_context),
+) -> AccountImportResponse:
+    if not get_settings().anthropic_import_enabled:
+        raise DashboardNotFoundError("Anthropic import is disabled", code="anthropic_import_disabled")
+    raw = await credentials_json.read()
+    try:
+        return await context.service.import_anthropic_account(raw, email=email)
+    except InvalidAnthropicAuthJsonError as exc:
+        raise DashboardBadRequestError(
+            "Invalid Anthropic credentials payload",
+            code="invalid_anthropic_auth_json",
+        ) from exc
+    except InvalidAnthropicEmailError as exc:
+        raise DashboardBadRequestError(str(exc), code="invalid_anthropic_email") from exc
 
 
 @router.post("/{account_id}/reactivate", response_model=AccountReactivateResponse)

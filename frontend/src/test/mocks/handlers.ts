@@ -264,7 +264,7 @@ export const handlers = [
   }),
 
   http.get("/api/accounts", () => {
-    return HttpResponse.json({ accounts: state.accounts });
+    return HttpResponse.json({ accounts: state.accounts, anthropicImportEnabled: false });
   }),
 
   http.post("/api/accounts/import", async () => {
@@ -282,6 +282,13 @@ export const handlers = [
       planType: created.planType,
       status: created.status,
     });
+  }),
+
+  http.post("/api/accounts/import-anthropic", async () => {
+    return HttpResponse.json(
+      { error: { code: "anthropic_import_disabled", message: "Anthropic import is disabled" } },
+      { status: 404 },
+    );
   }),
 
   http.post("/api/accounts/:accountId/pause", ({ params }) => {

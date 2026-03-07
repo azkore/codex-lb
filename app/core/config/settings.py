@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     anthropic_org_id: str | None = None
     anthropic_auto_discover_org: bool = False
     anthropic_credentials_discovery_enabled: bool = True
+    anthropic_import_enabled: bool = False
     anthropic_credentials_file: Path | None = None
     anthropic_credentials_helper_command: str | None = None
     anthropic_credentials_cache_seconds: int = Field(default=60, ge=0)

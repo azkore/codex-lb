@@ -1,17 +1,14 @@
-import { Clock, ExternalLink, Play, RotateCcw } from "lucide-react";
+import { Bot, Clock, ExternalLink, Play, RotateCcw, SquareTerminal } from "lucide-react";
 
 import { isEmailLabel } from "@/components/blur-email";
-import { usePrivacyStore } from "@/hooks/use-privacy";
-import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import type { AccountSummary } from "@/features/dashboard/schemas";
+import { usePrivacyStore } from "@/hooks/use-privacy";
+import { cn } from "@/lib/utils";
+import { normalizeStatus, quotaBarColor, quotaBarTrack } from "@/utils/account-status";
 import { formatCompactAccountId } from "@/utils/account-identifiers";
-import {
-  normalizeStatus,
-  quotaBarColor,
-  quotaBarTrack,
-} from "@/utils/account-status";
+import { isAnthropicAccountId, providerLabelForAccountId } from "@/utils/account-provider";
 import { formatPercentNullable, formatQuotaResetLabel } from "@/utils/formatters";
 
 type AccountAction = "details" | "resume" | "reauth";
@@ -69,6 +66,9 @@ function QuotaBar({
 export function AccountCard({ account, showAccountId = false, onAction }: AccountCardProps) {
   const blurred = usePrivacyStore((s) => s.blurred);
   const status = normalizeStatus(account.status);
+  const isAnthropic = isAnthropicAccountId(account.accountId);
+  const ProviderIcon = isAnthropic ? Bot : SquareTerminal;
+  const providerLabel = providerLabelForAccountId(account.accountId);
   const primaryRemaining = account.usage?.primaryRemainingPercent ?? null;
   const secondaryRemaining = account.usage?.secondaryRemainingPercent ?? null;
   const weeklyOnly = account.windowMinutesPrimary == null && account.windowMinutesSecondary != null;
@@ -79,38 +79,59 @@ export function AccountCard({ account, showAccountId = false, onAction }: Accoun
   const title = account.displayName || account.email;
   const titleIsEmail = isEmailLabel(title, account.email);
   const compactId = formatCompactAccountId(account.accountId);
-  const emailSubtitle =
-    account.displayName && account.displayName !== account.email
-      ? account.email
-      : null;
+  const emailSubtitle = account.displayName && account.displayName !== account.email ? account.email : null;
   const idSuffix = showAccountId ? ` (${compactId})` : "";
 
   return (
-    <div className="card-hover rounded-xl border bg-card p-4">
-      {/* Header */}
+    <div
+      className={cn(
+        "card-hover rounded-xl border bg-card p-4",
+        isAnthropic && "border-amber-500/20 bg-amber-500/5",
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold leading-tight">
-            {titleIsEmail && blurred
-              ? <><span className="privacy-blur">{title}</span>{!emailSubtitle ? idSuffix : ""}</>
-              : <>{title}{!emailSubtitle ? idSuffix : ""}</>}
-          </p>
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                isAnthropic
+                  ? "border-amber-500/35 bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                  : "border-sky-500/35 bg-sky-500/15 text-sky-700 dark:text-sky-400",
+              )}
+              title={providerLabel}
+            >
+              <ProviderIcon className="h-3 w-3" />
+            </span>
+            <p className="truncate text-sm font-semibold leading-tight">
+              {titleIsEmail && blurred ? (
+                <>
+                  <span className="privacy-blur">{title}</span>
+                  {!emailSubtitle ? idSuffix : ""}
+                </>
+              ) : (
+                <>
+                  {title}
+                  {!emailSubtitle ? idSuffix : ""}
+                </>
+              )}
+            </p>
+          </div>
           {emailSubtitle ? (
             <p className="mt-0.5 truncate text-xs text-muted-foreground" title={showAccountId ? `Account ID ${account.accountId}` : undefined}>
-              <span className={blurred ? "privacy-blur" : undefined}>{emailSubtitle}</span>{showAccountId ? ` | ID ${compactId}` : ""}
+              <span className={blurred ? "privacy-blur" : undefined}>{emailSubtitle}</span>
+              {showAccountId ? ` | ID ${compactId}` : ""}
             </p>
           ) : null}
         </div>
         <StatusBadge status={status} />
       </div>
 
-      {/* Quota bars */}
       <div className={cn("mt-3.5 grid gap-3", weeklyOnly ? "grid-cols-1" : "grid-cols-2")}>
         {!weeklyOnly && <QuotaBar label="Primary" percent={primaryRemaining} resetLabel={primaryReset} />}
         <QuotaBar label="Secondary" percent={secondaryRemaining} resetLabel={secondaryReset} />
       </div>
 
-      {/* Actions */}
       <div className="mt-3 flex items-center gap-1.5 border-t pt-3">
         <Button
           type="button"

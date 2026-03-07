@@ -72,6 +72,7 @@ export const AccountTrendsResponseSchema = z.object({
 
 export const AccountsResponseSchema = z.object({
   accounts: z.array(AccountSummarySchema),
+  anthropicImportEnabled: z.boolean().optional().default(false),
 });
 
 export const AccountImportResponseSchema = z.object({

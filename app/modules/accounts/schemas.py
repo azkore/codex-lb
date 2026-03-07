@@ -80,6 +80,7 @@ class AccountSummary(DashboardModel):
 
 class AccountsResponse(DashboardModel):
     accounts: List[AccountSummary] = Field(default_factory=list)
+    anthropic_import_enabled: bool = False
 
 
 class AccountImportResponse(DashboardModel):
