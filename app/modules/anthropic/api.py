@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -11,11 +12,8 @@ from app.core.auth.dependencies import (
     set_dashboard_error_format,
     validate_dashboard_session,
 )
-from app.core.clients.anthropic_api_proxy import (
-    AnthropicProxyError,
-    anthropic_error_payload,
-    get_recent_diagnostics,
-)
+from app.core.clients.anthropic_api_proxy import get_recent_diagnostics
+from app.core.clients.anthropic_proxy import AnthropicProxyError, anthropic_error_payload
 from app.core.config.settings_cache import get_settings_cache
 from app.core.types import JsonValue
 from app.db.session import get_background_session
@@ -30,6 +28,7 @@ from app.modules.api_keys.service import (
 )
 
 router = APIRouter(prefix="/claude/v1", tags=["anthropic"], dependencies=[Depends(set_anthropic_error_format)])
+api_router = APIRouter(prefix="/claude-sdk/v1", tags=["anthropic"], dependencies=[Depends(set_anthropic_error_format)])
 diagnostics_router = APIRouter(
     prefix="/api/anthropic",
     tags=["dashboard"],
@@ -70,13 +69,24 @@ async def messages(
     context: AnthropicContext = Depends(get_anthropic_context),
     api_key: ApiKeyData | None = Security(validate_anthropic_api_key),
 ):
-    return await _messages_impl(request, context, api_key)
+    return await _messages_impl(request, context, api_key, transport="api")
+
+
+@api_router.post("/messages")
+async def messages_api(
+    request: Request,
+    context: AnthropicContext = Depends(get_anthropic_context),
+    api_key: ApiKeyData | None = Security(validate_anthropic_api_key),
+):
+    return await _messages_impl(request, context, api_key, transport="sdk")
 
 
 async def _messages_impl(
     request: Request,
     context: AnthropicContext,
     api_key: ApiKeyData | None,
+    *,
+    transport: Literal["sdk", "api"],
 ):
     payload = await _require_json_object(request)
     model = _extract_model(payload)
@@ -90,6 +100,7 @@ async def _messages_impl(
             request.headers,
             api_key=api_key,
             api_key_reservation=reservation,
+            transport=transport,
         )
         try:
             first = await upstream_stream.__anext__()
@@ -114,6 +125,7 @@ async def _messages_impl(
             request.headers,
             api_key=api_key,
             api_key_reservation=reservation,
+            transport=transport,
         )
         return JSONResponse(content=response_payload)
     except AnthropicProxyError as exc:

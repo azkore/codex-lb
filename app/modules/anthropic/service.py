@@ -1,22 +1,29 @@
 from __future__ import annotations
 
-import json
 import logging
 import time
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
+from typing import Literal
 
 import anyio
 
 from app.core.auth.anthropic_credentials import resolve_anthropic_credentials
 from app.core.clients.anthropic_api_proxy import (
-    AnthropicProxyError,
-)
-from app.core.clients.anthropic_api_proxy import (
     create_message as core_create_message_api,
 )
 from app.core.clients.anthropic_api_proxy import (
     stream_messages as core_stream_messages_api,
+)
+from app.core.clients.anthropic_proxy import (
+    AnthropicProxyError,
+    parse_sse_data_payload,
+)
+from app.core.clients.anthropic_proxy import (
+    create_message as core_create_message,
+)
+from app.core.clients.anthropic_proxy import (
+    stream_messages as core_stream_messages,
 )
 from app.core.clients.anthropic_usage import AnthropicUsageFetchError, fetch_usage_snapshot
 from app.core.config.settings import get_settings
@@ -54,6 +61,7 @@ class AnthropicService:
         *,
         api_key: ApiKeyData | None,
         api_key_reservation: ApiKeyUsageReservationData | None,
+        transport: Literal["sdk", "api"] = "sdk",
     ) -> dict[str, JsonValue]:
         settings = get_settings()
         request_id = ensure_request_id(headers.get("x-request-id") or headers.get("request-id"))
@@ -69,7 +77,11 @@ class AnthropicService:
         error = AnthropicRequestError(code=None, message=None)
 
         try:
-            response_payload = await core_create_message_api(payload, headers)
+            response_payload = await _create_message_with_transport(
+                transport,
+                payload,
+                headers,
+            )
             model = _extract_response_model(response_payload) or model
             usage = _usage_from_message_payload(response_payload)
             return response_payload
@@ -104,12 +116,14 @@ class AnthropicService:
         *,
         api_key: ApiKeyData | None,
         api_key_reservation: ApiKeyUsageReservationData | None,
+        transport: Literal["sdk", "api"] = "sdk",
     ) -> AsyncIterator[str]:
         return self._stream_messages(
             payload,
             headers,
             api_key=api_key,
             api_key_reservation=api_key_reservation,
+            transport=transport,
         )
 
     async def refresh_usage_windows(self) -> bool:
@@ -183,6 +197,7 @@ class AnthropicService:
         *,
         api_key: ApiKeyData | None,
         api_key_reservation: ApiKeyUsageReservationData | None,
+        transport: Literal["sdk", "api"],
     ) -> AsyncIterator[str]:
         settings = get_settings()
         request_id = ensure_request_id(headers.get("x-request-id") or headers.get("request-id"))
@@ -197,8 +212,12 @@ class AnthropicService:
         accumulator = _StreamAccumulator(model=model)
 
         try:
-            async for line in core_stream_messages_api(payload, headers):
-                event_payload = _parse_sse_data_payload(line)
+            async for line in _stream_messages_with_transport(
+                transport,
+                payload,
+                headers,
+            ):
+                event_payload = parse_sse_data_payload(line)
                 accumulator.observe(event_payload)
                 yield line
             accumulator.mark_stream_end()
@@ -475,18 +494,24 @@ def _total_input_tokens_for_log(
     return (input_tokens or 0) + (cache_creation_input_tokens or 0) + (cache_read_input_tokens or 0)
 
 
-def _parse_sse_data_payload(block: str) -> dict[str, JsonValue] | None:
-    for line in block.splitlines():
-        if not line.startswith("data:"):
-            continue
-        raw = line[5:].strip()
-        if not raw or raw == "[DONE]":
-            continue
-        try:
-            decoded = json.loads(raw)
-        except json.JSONDecodeError:
-            return None
-        if isinstance(decoded, dict):
-            return decoded
-        return None
-    return None
+async def _create_message_with_transport(
+    transport: Literal["sdk", "api"],
+    payload: dict[str, JsonValue],
+    headers: Mapping[str, str],
+) -> dict[str, JsonValue]:
+    if transport == "api":
+        return await core_create_message_api(payload, headers)
+    return await core_create_message(payload, headers)
+
+
+async def _stream_messages_with_transport(
+    transport: Literal["sdk", "api"],
+    payload: dict[str, JsonValue],
+    headers: Mapping[str, str],
+) -> AsyncIterator[str]:
+    if transport == "api":
+        async for line in core_stream_messages_api(payload, headers):
+            yield line
+        return
+    async for line in core_stream_messages(payload, headers):
+        yield line

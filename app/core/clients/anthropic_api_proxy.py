@@ -24,8 +24,9 @@ from app.core.auth.anthropic_credentials import (
 )
 from app.core.clients.http import get_http_client
 from app.core.config.settings import get_settings
-from app.core.errors import AnthropicErrorEnvelope, anthropic_error
 from app.core.types import JsonValue
+
+from .anthropic_proxy import AnthropicProxyError, anthropic_error_payload
 
 _IGNORE_INBOUND_HEADERS = {
     "authorization",
@@ -41,17 +42,6 @@ _MAX_EVENT_BYTES = 2 * 1024 * 1024
 _DIAGNOSTICS_MAX_ITEMS = 500
 
 logger = logging.getLogger(__name__)
-
-
-class AnthropicProxyError(Exception):
-    def __init__(self, status_code: int, payload: AnthropicErrorEnvelope) -> None:
-        super().__init__(payload["error"]["message"])
-        self.status_code = status_code
-        self.payload = payload
-
-
-def anthropic_error_payload(error_type: str, message: str) -> AnthropicErrorEnvelope:
-    return anthropic_error(error_type, message)
 
 
 @dataclass(slots=True)
