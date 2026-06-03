@@ -470,6 +470,37 @@ def _manual_schema_drift_diffs(connection: Connection) -> tuple[str, ...]:
     return tuple(diffs)
 
 
+_IGNORED_SQLITE_DEFAULT_DIFF_COLUMNS = frozenset(
+    {
+        ("api_keys", "is_active"),
+        ("dashboard_settings", "api_key_auth_enabled"),
+    }
+)
+
+
+def _is_ignored_sqlite_default_diff(diff: object) -> bool:
+    items = diff if isinstance(diff, list) else [diff]
+    for item in items:
+        if not isinstance(item, tuple) or len(item) < 4 or item[0] != "modify_default":
+            return False
+        if (item[2], item[3]) not in _IGNORED_SQLITE_DEFAULT_DIFF_COLUMNS:
+            return False
+    return True
+
+
+def _filter_expected_drift_diffs(diffs: list[object], *, dialect_name: str) -> list[object]:
+    filtered: list[object] = []
+    for diff in diffs:
+        if isinstance(diff, tuple) and len(diff) >= 2 and diff[0] == "remove_table":
+            table = diff[1]
+            if getattr(table, "name", None) == _LEGACY_MIGRATIONS_TABLE:
+                continue
+        if dialect_name == "sqlite" and _is_ignored_sqlite_default_diff(diff):
+            continue
+        filtered.append(diff)
+    return filtered
+
+
 def check_schema_drift(database_url: str) -> tuple[str, ...]:
     config = _build_alembic_config(database_url)
     sync_database_url = _required_sqlalchemy_url(config)
@@ -493,6 +524,7 @@ def check_schema_drift(database_url: str) -> tuple[str, ...]:
                 message=r"autogenerate skipping metadata-specified expression-based index .*",
             )
             diffs = compare_metadata(migration_context, Base.metadata)
+            diffs = _filter_expected_drift_diffs(diffs, dialect_name=connection.dialect.name)
         manual_diffs = _manual_schema_drift_diffs(connection)
 
     return tuple(repr(diff) for diff in diffs) + manual_diffs

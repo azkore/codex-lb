@@ -116,6 +116,57 @@ def test_check_schema_drift_detects_rogue_table(tmp_path: Path) -> None:
     assert any("rogue_table" in diff for diff in drift)
 
 
+def test_check_schema_drift_ignores_legacy_schema_migrations_table(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy-bootstrap.db"
+    url = _db_url(db_path)
+
+    run_upgrade(url, "head", bootstrap_legacy=False)
+
+    sync_url = to_sync_database_url(url)
+    with create_engine(sync_url, future=True).connect() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"
+            )
+        )
+        connection.commit()
+
+    assert check_schema_drift(url) == ()
+
+
+def test_check_schema_drift_ignores_known_sqlite_boolean_default_diffs(tmp_path: Path) -> None:
+    db_path = tmp_path / "sqlite-default-drift.db"
+    url = _db_url(db_path)
+
+    run_upgrade(url, "head", bootstrap_legacy=False)
+
+    sync_url = to_sync_database_url(url)
+    with create_engine(sync_url, future=True).begin() as connection:
+        connection.execute(text("DROP TABLE api_keys"))
+        connection.execute(
+            text(
+                '''
+                CREATE TABLE api_keys (
+                    id VARCHAR NOT NULL PRIMARY KEY,
+                    name VARCHAR NOT NULL,
+                    key_hash VARCHAR NOT NULL UNIQUE,
+                    key_prefix VARCHAR NOT NULL,
+                    allowed_models TEXT,
+                    enforced_model VARCHAR,
+                    enforced_reasoning_effort VARCHAR,
+                    expires_at DATETIME,
+                    is_active BOOLEAN DEFAULT 1 NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                    last_used_at DATETIME
+                )
+                '''
+            )
+        )
+        connection.execute(text("CREATE INDEX idx_api_keys_hash ON api_keys (key_hash)"))
+
+    assert check_schema_drift(url) == ()
+
+
 def test_check_schema_drift_detects_missing_manual_performance_index(tmp_path: Path) -> None:
     db_path = tmp_path / "missing-index.db"
     url = _db_url(db_path)
